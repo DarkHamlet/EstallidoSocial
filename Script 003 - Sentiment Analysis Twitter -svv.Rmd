@@ -1,0 +1,169 @@
+---
+title: "TweetSenti"
+author: "Ramean Team"
+date: "21-11-2019"
+output: html_document
+---
+
+### Cargar librerias
+```{r}
+library(rtweet)
+library(dplyr)
+library(tidytext)
+library(ggplot2)
+```
+
+
+
+### Twitter API Token de Hamlet
+```{r}
+token = create_token(
+  app = "app4data", #app4data
+  consumer_key = "yT0a2vvDkbmquBoKiWILt2jdx",
+  consumer_secret = "baeaFoj0fv3TTGS98PTTKkg29r4Eh5FwlePgtjQLGIzNSDLUQk",
+  access_token = "803590273-vXRZOdHPb5cMDuusJ3Z6VPDBqB2nRLIi84l7Yh34",
+  access_secret = "yZVU0mwzHsItUulpvEibo8XV4Y0A04pXu9BRmEcaq7AuD")
+```
+
+
+### Palabras clave
+Se deben elegir otras más, o diferentes... Qué criterio se puede utilizar?
+```{r}
+query <- "chile,estallido,social,pacos,constitucion,DDHH,dictadura,pinochet,represion,derechos,protesta,marcha,AFP,salud,educación,ojos,ocular,disparar,desperto"
+query
+```
+
+
+### Tiempo de streaming
+Utilicé 121 segundos y descargó 3973 tweets
+
+Creo conveniente dejarlo corriendo al menos 30 minutos
+```{r}
+horas <- 0
+minutos <- 2
+segundos <- 1
+
+streamtime <- 1*segundos + 60*minutos + 60*60*horas
+paste("Tomará ", streamtime, " segundos")
+```
+
+
+### Creamos archivos JSON para guardar el stream y el frame
+```{r}
+filename <- "stream_svv.json" # tweets en tiempo real
+filename2 <- "tweetsframe.json" # tweets del periodo a estudiar
+```
+
+
+```{r}
+streamdata <- stream_tweets(q = query, 
+                            timeout = streamtime, 
+                            file_name = filename)
+```
+
+### searchTwitter con fecha desde que parti� el movimiento social 
+```{r}
+tweets <- searchTwitter(q = "renuncia+pinera"
+                        ,n=10, lang="es"
+                        ,since="2019-10-18"
+                        ,until="2019-11-18"
+                        #, geocode='-33.4372, -70.6506, 500km' # geocode = 'latitude,longitude,radius,1mi' # Stgo: -33.4372, -70.6506
+                        ,resultType="popular"
+                        ,file_name=filename2)
+```
+
+
+### Revisemos el streamdata obtenido
+```{r}
+streamdata
+
+# con 121 segundos se obtuvieron 3973 filas de datos
+# 
+```
+
+```{r}
+table(streamdata$location)
+table(streamdata$country)
+table(streamdata$coords_coords)
+nrow(streamdata)
+ts_plot(data = streamdata, by = "secs", tz = "America/Santiago")
+```
+
+#clean up links from the data
+```{r}
+streamdata$clean_text <- gsub("http.*","",  streamdata$text)
+streamdata$clean_text <- gsub("https.*","", streamdata$clean_text)
+class(stop_words)
+#clean out punctuations 
+streamdata_clean <- streamdata %>%
+  dplyr::select(clean_text) %>%
+  unnest_tokens(word, clean_text)
+
+#count unique words
+nrow(streamdata_clean)
+```
+
+```{r}
+library(stopwords)
+stopwords_es <- tibble(word = stopwords(language = "es"))
+#remove all stop words
+streamdata_cleanwords_st <- streamdata_clean %>% anti_join(stopwords_es)
+#count all the uniques words again 
+nrow(streamdata_cleanwords_st)
+```
+
+
+```{r}
+streamdata_cleanwords_st %>%
+  count(word, sort = TRUE) %>%
+  top_n(10) %>%
+  mutate(word = reorder(word, n)) %>%
+  ggplot(aes(x = word, y = n)) +
+  geom_col() +
+  xlab(NULL) +
+  coord_flip() +
+  labs(y = "Frequency of Words",
+       x = "words",
+       title = "Top 10 most used words in tweets",
+       subtitle = "Stop words have been removed")
+```
+
+
+### Se crea una wordcloud
+NOTA: se debe cambiar la min.freq para que no aparezcan palabras con muy pocas repeticiones para el espacio del plot
+También se debe seguir limpiando los datos de palabras para que no aparezcan palabras asiaticas o en idiomas que no nos interesen
+```{r}
+install.packages("wordcloud")
+install.packages("tm")
+install.packages("ColorBrewer")
+library(wordcloud)
+library(tm)
+library(ColorBrewer)
+wordcloud(streamdata_cleanwords_st$word, min.freq = 42, random.order = FALSE)
+```
+
+
+### Análisis de sentimiento
+Basandose en [este link](https://rpubs.com/JaimeFC/415349)
+También revisar [tiditext](https://www.tidytextmining.com/sentiment.html)
+Y también [SentimentAnalysis](https://cran.r-project.org/web/packages/SentimentAnalysis/vignettes/SentimentAnalysis.html#language-support-and-extensibility)
+
+
+Hasta aquí llegué... zzzzz
+```{r}
+# install.packages("sentimentr")
+
+# library(sentimentr)
+
+# install.packages("remotes")
+# remotes::install_github("abhy/sentiment")
+
+
+library(SentimentAnalysis)
+
+analyzeSentiment(streamdata_cleanwords_st, language = "spanish")
+
+
+
+```
+
