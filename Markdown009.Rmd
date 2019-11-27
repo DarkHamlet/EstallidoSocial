@@ -1,0 +1,143 @@
+---
+title: "Analisis de Sentimiento para Decisiones de Inversion"
+author: "Ramean Team"
+date: "22-11-2019"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## GitHub Documents
+
+This is an R Markdown format used for publishing markdown documents to GitHub. When you click the **Knit** button all R code chunks are run and a markdown file (.md) suitable for publishing to GitHub is generated.
+
+### Cargar librerias
+```{r Carga de librerias}
+library(rtweet)
+library(dplyr)
+library(tidytext)
+library(ggplot2)
+```
+
+
+### Twitter API Token 
+Utilizaremos API de cuenta de Twitter Dev
+```{r GeneraciÃ³n de tokens}
+app_h = "app4data"
+consumer_key_h = "yT0a2vvDkbmquBoKiWILt2jdx"
+consumer_secret_h = "baeaFoj0fv3TTGS98PTTKkg29r4Eh5FwlePgtjQLGIzNSDLUQk"
+access_token_h = "803590273-vXRZOdHPb5cMDuusJ3Z6VPDBqB2nRLIi84l7Yh34"
+access_secret_h = "yZVU0mwzHsItUulpvEibo8XV4Y0A04pXu9BRmEcaq7AuD"
+
+token_h <- create_token(app = app_h,
+                        consumer_key = consumer_key_h,
+                        consumer_secret = consumer_secret_h,
+                        access_token = access_token_h,
+                        access_secret = access_secret_h)
+```
+
+### Palabras clave
+Se utilizan las siguientes palabras claves para las bÃºsquedas
+```{r}
+query_chile <- "chile OR estallido OR social OR pacos OR constitucion OR DDHH OR dictadura OR pinochet OR represion OR derechos OR protesta OR marcha OR AFP OR salud OR educacion OR ojos OR ocular OR disparar OR desperto OR justicia"
+```
+
+### Se realiza extracciÃ³n definitiva de tweets 
+Por limitaciones de la librerÃ�a en versiÃ³n estandar, sÃ³lo se pueden extraer tweets de hasta hace 9 dÃ�as.
+Algunas condiciones:
+- se extraen tweets populares y recientes ("mixed")
+- se excluyen retweets 
+- se acota la bÃºsqueda a lenguaje espaÃ±ol 
+- se acota paÃ�s a Chile
+- Se extrae el mÃ¡ximo nÃºmero de tweets que permite esta API (18.000)
+
+Se mide el tiempo del proceso, tomando alrededor de 16 minutos.
+
+## IMPORTANTE: No ejecutar este cÃ³digo dado que demora ~30 min.
+```{r}
+# library(rtweet)
+# start_time <- Sys.time()
+# tuits_s <- search_tweets(q = query_chile, 
+#                        n = 18000, 
+#                        type = "mixed", 
+#                        include_rts = F, 
+#                        token = token_h, 
+#                        retryonratelimit = T, 
+#                        lang = "es",
+#                        country = "chile"
+#                        )
+# 
+# end_time <- Sys.time()
+# saveRDS(tuits_s, file = "tuits_s.rds")
+# diff <- end_time - start_time; diff
+# tuits_s
+```
+
+### Para no ejecutar el cÃ³digo anterior dado que demora ~30 min, cargamos la base con los tweets ya lista.
+```{r}
+readRDS("tuits_r_df.rds") ##
+```
+
+### Limpiar datos para eliminar links innecesarios y palabras no Ãºtiles
+```{r}
+tuits_r_df$clean_text <- gsub("http.*","",  tuits_r_df$text)
+tuits_r_df$clean_text <- gsub("https.*","", tuits_r_df$clean_text)
+library(dplyr)
+library(stopwords)
+library(tidytext)
+
+stopwords_es <- tibble(word = c(stopwords(language = "es"),"q", "rt", "d", "si"))
+
+tuits_limpio <- tuits_r_df %>%
+  dplyr::select(clean_text) %>%
+  unnest_tokens(word, clean_text)
+
+# Remueve todas las palabras no elementales
+tuits_limpio2 <- tuits_limpio %>% 
+  anti_join(stopwords_es, by = "word")
+
+# Cuenta todas las palabras Ãºnicas ya limpias 
+nrow(tuits_limpio2)
+```
+
+### Frecuencia de palabras
+```{r Frecuencia de palabras clave}
+library(ggplot2)
+tuits_limpio2 %>%
+  count(word, sort = TRUE) %>%
+  top_n(20) %>%
+  mutate(word = reorder(word, n)) %>%
+  ggplot(aes(x = word, y = n)) +
+  geom_col() +
+  xlab(NULL) +
+  coord_flip() +
+  labs(y = "Frecuencia de palabras",
+       x = "Palabras",
+       title = "Top 20 palabras mÃ¡s usadas en tweets",
+       subtitle = "Palabras no elementales fueron removidas de la muestra")
+```
+
+### Se crea una wordcloud
+NOTA: se debe cambiar la min.freq para que no aparezcan palabras con muy pocas repeticiones para el espacio del plot
+TambiÃ©n se debe seguir limpiando los datos de palabras para que no aparezcan palabras asiÃ¡ticas o en idiomas que no nos interesen
+```{r Generar nube de palabras clave}
+library(RColorBrewer)
+library(wordcloud)
+wordcloud(tuits_limpio2$word, min.freq = 165, max.words=200, random.order = F, rot.per = 0.35, colors=brewer.pal(8, "Dark2"))
+```
+
+# Se puede obtener la tendencia de la ciudad
+```{r}
+sf <- get_trends("Santiago")
+```
+
+## Análisis de Sentimiento
+```{r}
+install.packages("sentimentr")
+library(sentimentr)
+```
+
+
+
