@@ -1,0 +1,193 @@
+---
+title: "TweetSenti Frame"
+author: "Ramean Team"
+date: "22-11-2019"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## GitHub Documents
+
+This is an R Markdown format used for publishing markdown documents to GitHub. When you click the **Knit** button all R code chunks are run and a markdown file (.md) suitable for publishing to GitHub is generated.
+
+### Cargar librerias
+```{r}
+library(rtweet)
+library(dplyr)
+library(tidytext)
+library(ggplot2)
+```
+
+
+### Twitter API Token de Hamlet
+```{r}
+token = create_token(
+  app = "app4data", #app4data
+  consumer_key = "yT0a2vvDkbmquBoKiWILt2jdx",
+  consumer_secret = "baeaFoj0fv3TTGS98PTTKkg29r4Eh5FwlePgtjQLGIzNSDLUQk",
+  access_token = "803590273-vXRZOdHPb5cMDuusJ3Z6VPDBqB2nRLIi84l7Yh34",
+  access_secret = "yZVU0mwzHsItUulpvEibo8XV4Y0A04pXu9BRmEcaq7AuD")
+```
+
+
+### Palabras clave
+Se deben elegir otras mÃ¡s, o diferentes... QuÃ© criterio se puede utilizar? (+ sirve como un y)
+```{r}
+query <- "chile,estallido,social,pacos,constitucion,DDHH,dictadura,pinochet,represion,derechos,protesta,marcha,AFP,salud,educaciÃ³n,ojos,ocular,disparar,desperto"
+query
+```
+
+### Buscar n tweets en esta fecha con palabras de la query.
+```{r}
+n = 1000
+since <- "11-10-2019"
+until <- "11-11-2019"
+rt <- search_tweets(
+    q = query, n = n, type = "popular"
+    #, since = since, until = until
+    )
+rt
+#?search_tweets
+```
+
+
+```{r}
+## get user IDs of accounts followed by CNN
+tmls <- get_timelines(c("cnn", "TVN", "24horasTVN", "chilevision", "meganoticiascl"), n = 3200)
+
+## plot the frequency of tweets for each user over time
+tmls %>%
+  dplyr::filter(created_at > "2019-10-11") %>%
+  dplyr::group_by(screen_name) %>%
+  ts_plot("days", trim = 1L) +
+  ggplot2::geom_point() +
+  ggplot2::theme_minimal() +
+  ggplot2::theme(
+    legend.title = ggplot2::element_blank(),
+    legend.position = "bottom",
+    plot.title = ggplot2::element_text(face = "bold")) +
+  ggplot2::labs(
+    x = NULL, y = NULL,
+    title = "Frequency of Twitter statuses posted by news organization",
+    subtitle = "Twitter status (tweet) counts aggregated by day from October/November 2017",
+    caption = "\nSource: Data collected from Twitter's REST API via rtweet"
+  )
+```
+
+```{r}
+sf <- get_trends("Santiago")
+sf
+#?get_trends
+```
+
+<!-- ### searchTwitter con fecha desde que partió el movimiento social  -->
+<!-- ```{r} -->
+<!-- tweets <- searchTwitter(q = query -->
+<!--                         ,n=10, lang="es" -->
+<!--                         ,since="2019-10-18" -->
+<!--                         ,until="2019-11-18" -->
+<!--                         #, geocode='-33.4372, -70.6506, 500km' # geocode = 'latitude,longitude,radius,1mi' # Stgo: -33.4372, -70.6506 -->
+<!--                         ,resultType="popular" # sólo los tweets más populares -->
+<!--                         ,file_name=filename) -->
+<!-- ``` -->
+
+
+### Revisemos el frame obtenido
+```{r}
+tmls
+streamdata <- tmls
+# con 121 segundos se obtuvieron 3973 filas de datos
+# 
+```
+
+```{r}
+table(streamdata$location)
+table(streamdata$country)
+table(streamdata$coords_coords)
+nrow(streamdata)
+ts_plot(data = streamdata, by = "secs", tz = "America/Santiago")
+```
+
+#clean up links from the data
+```{r}
+streamdata$clean_text <- gsub("http.*","",  streamdata$text)
+streamdata$clean_text <- gsub("https.*","", streamdata$clean_text)
+class(stop_words)
+#clean out punctuations 
+streamdata_clean <- streamdata %>%
+  dplyr::select(clean_text) %>%
+  unnest_tokens(word, clean_text)
+
+#count unique words
+nrow(streamdata_clean)
+```
+
+```{r}
+library(stopwords)
+stopwords_es <- tibble(word = stopwords(language = "es"))
+#remove all stop words
+streamdata_cleanwords_st <- streamdata_clean %>% anti_join(stopwords_es)
+#count all the uniques words again 
+nrow(streamdata_cleanwords_st)
+```
+
+
+```{r}
+streamdata_cleanwords_st %>%
+  count(word, sort = TRUE) %>%
+  top_n(10) %>%
+  mutate(word = reorder(word, n)) %>%
+  ggplot(aes(x = word, y = n)) +
+  geom_col() +
+  xlab(NULL) +
+  coord_flip() +
+  labs(y = "Frequency of Words",
+       x = "words",
+       title = "Top 10 most used words in tweets",
+       subtitle = "Stop words have been removed")
+```
+
+
+### Se crea una wordcloud
+NOTA: se debe cambiar la min.freq para que no aparezcan palabras con muy pocas repeticiones para el espacio del plot
+TambiÃ©n se debe seguir limpiando los datos de palabras para que no aparezcan palabras asiaticas o en idiomas que no nos interesen
+```{r}
+install.packages("wordcloud")
+install.packages("tm")
+install.packages("ColorBrewer")
+library(wordcloud)
+library(tm)
+library(ColorBrewer)
+```
+
+### Ploteamos el wordcloud
+```{r, echo=FALSE}
+wordcloud(streamdata_cleanwords_st$word
+          ,min.freq = 42
+          ,random.order = FALSE
+          ,colors=brewer.pal(6,"Dark2"))
+```
+
+
+### AnÃ¡lisis de sentimiento
+Basandose en [este link](https://rpubs.com/JaimeFC/415349)
+TambiÃ©n revisar [tiditext](https://www.tidytextmining.com/sentiment.html)
+Y tambiÃ©n [SentimentAnalysis](https://cran.r-project.org/web/packages/SentimentAnalysis/vignettes/SentimentAnalysis.html#language-support-and-extensibility)
+
+
+<!-- ## Análisis de Sentimiento -->
+<!-- ```{r} -->
+<!-- install.packages("sentimentr") -->
+<!-- library(sentimentr) -->
+
+<!-- install.packages("remotes") -->
+
+<!-- remotes::install_github("abhy/sentiment") -->
+<!-- library(SentimentAnalysis) -->
+
+<!-- analyzeSentiment(streamdata_cleanwords_st, language = "spanish") -->
+<!-- ``` -->
+
